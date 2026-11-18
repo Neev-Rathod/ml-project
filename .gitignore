@@ -5,6 +5,7 @@ dataset/
 # outputs/
 outputs/*
 !outputs/wp1/
+!outputs/wp4/
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
