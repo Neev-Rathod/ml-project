@@ -1,5 +1,5 @@
 # WP4 – Co-Training & Transductive SVMs
-**Person:** Pratyush Somani (2024A7PS0514G)
+**Person:** Arnav Gupta (2024A7PS0613G)
 
 ---
 
@@ -18,6 +18,7 @@ Both methods **discard** the noisy machine-generated labels in D_U (like WP3).
 
 | File | Purpose |
 |------|---------|
+| `THEORY.md` | **Theoretical foundations, mathematical derivations & methodology guide** |
 | `run_wp4.py` | **Entry point** |
 | `cotraining.py` | Co-Training with two views (time-domain vs. frequency-domain) |
 | `tsvm.py` | Transductive SVM with iterative label switching + C_U annealing |
