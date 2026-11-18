@@ -1,0 +1,7 @@
+variant,purity_all,ari_all,purity_clean,purity_noisy
+Raw+Euclidean,0.5778,0.0486,0.591,0.54
+Raw+Cosine,0.5589,0.0416,0.5696,0.5332
+Raw+Mahalanobis,0.5646,0.1081,0.572,0.5359
+PCA+Euclidean,0.5777,0.0723,0.5863,0.5442
+PCA+Cosine,0.5589,0.0427,0.5713,0.5332
+PCA+Mahalanobis,0.5771,0.0814,0.5857,0.5438

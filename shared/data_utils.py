@@ -78,7 +78,7 @@ def assign_gold_untrusted(
 def load_standard_split(
     features_path: str | Path,
     labels_path: str | Path,
-    meta_path: str | Path,
+    meta_path: str | Path | None = None,
 ) -> dict:
     """
     Load the pre-computed feature / label arrays produced by WP1 and return
@@ -102,8 +102,8 @@ def load_standard_split(
     features_path = Path(features_path)
     labels_path   = Path(labels_path)
 
-    feat   = np.load(features_path)
-    labels = np.load(labels_path)
+    feat   = np.load(features_path, allow_pickle=True)
+    labels = np.load(labels_path,   allow_pickle=True)
 
     X          = feat["X"]
     y          = labels["y"]

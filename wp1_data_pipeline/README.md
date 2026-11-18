@@ -1,5 +1,7 @@
 # WP1 – Data Pipeline & Sensor Noise Analysis
-**Person:** Shaurya Suman (2024A7PS0589G)
+
+**Person:** Neev Rathod (2024A7PS0487G)  
+**Status:** ✅ Complete
 
 ---
 
@@ -7,22 +9,24 @@
 
 WP1 is the **foundation** every other Work Package depends on. It:
 
-1. Loads PTB-XL metadata and resolves each record's diagnostic superclass.
-2. Extracts an **84-dimensional feature vector** from each waveform.
-3. Saves `features.npz` and `labels.npz` so WP2–WP5 don't have to load raw waveforms.
+1. Loads PTB-XL metadata and resolves each record to a single diagnostic superclass.
+2. Extracts an **84-dimensional feature vector** from each raw 12-lead waveform.
+3. Saves `features.npz` and `labels.npz` so WP2–WP5 never need to touch raw waveforms.
 4. Runs the **Sensor Noise & Subspace Analysis** (Proposal §5.1).
+
+**Results and analysis are documented in [`outputs/wp1/README.md`](../outputs/wp1/README.md).**
 
 ---
 
 ## Files in This Folder
 
-| File | Purpose |
-|------|---------|
-| `run_wp1.py` | **Entry point** – run this |
-| `loader.py` | Reads ptbxl_database.csv and raw WFDB waveforms |
-| `feature_extractor.py` | Computes the 84 features (View 1 + View 2) |
-| `noise_analysis.py` | k-Means clustering under sensor artifacts; PCA scree plot |
-| `README.md` | This file |
+| File                   | Purpose                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `run_wp1.py`           | **Entry point** – run this first                                                     |
+| `loader.py`            | Reads ptbxl_database.csv, resolves diagnostic superclasses, loads raw WFDB waveforms |
+| `feature_extractor.py` | Computes all 84 features (View 1 time-domain + View 2 frequency-domain)              |
+| `noise_analysis.py`    | k-Means cluster purity across 6 variants; PCA scree plot                             |
+| `README.md`            | This file                                                                            |
 
 ---
 
@@ -31,18 +35,17 @@ WP1 is the **foundation** every other Work Package depends on. It:
 ### Prerequisites
 
 ```bash
-# From the project root
 pip install -r requirements.txt
 ```
 
-### Quick smoke test (500 records, ~1 min)
+### Quick smoke test (~1 min)
 
 ```bash
 cd wp1_data_pipeline
 python run_wp1.py --data_path D:\ml-project\dataset --out_dir ..\outputs\wp1 --max_records 500
 ```
 
-### Full run (all 21,799 records, ~15–30 min depending on hardware)
+### Full run (all 21,799 records, ~15–30 min)
 
 ```bash
 python run_wp1.py --data_path D:\ml-project\dataset --out_dir ..\outputs\wp1
@@ -56,75 +59,75 @@ python run_wp1.py --data_path D:\ml-project\dataset --out_dir ..\outputs\wp1 --s
 
 ---
 
-## Outputs
+## Outputs Produced
 
 After a full run, `outputs/wp1/` will contain:
 
-| File | Description |
-|------|-------------|
-| `features.npz` | Key `X` – shape (N, 84) float32 |
-| `labels.npz` | Keys `y` (int labels 0–4), `fold` (1–10), `gold_mask` (bool), `ecg_ids` |
-| `noise_cluster_purity.png` | Bar chart: cluster purity Raw vs PCA × 3 distance metrics |
-| `pca_explained_variance.png` | Scree plot of cumulative PCA variance |
-| `noise_analysis_results.csv` | Numeric purity / ARI table |
+| File                         | Description                                           |
+| ---------------------------- | ----------------------------------------------------- |
+| `features.npz`               | Key `X` – shape (N, 84) float32                       |
+| `labels.npz`                 | Keys `y`, `fold`, `gold_mask`, `ecg_ids`              |
+| `split_summary.csv`          | Per-class record counts for each data split           |
+| `feature_names.csv`          | Index → feature name + view                           |
+| `feature_stats.csv`          | Mean / std / min / max per feature                    |
+| `noise_analysis_results.csv` | k-Means purity and ARI for each variant               |
+| `noise_cluster_purity.png`   | Bar chart: purity for all vs. clean vs. noisy records |
+| `pca_explained_variance.png` | Cumulative PCA variance scree plot                    |
+| `README.md`                  | Full results documentation with interpretation        |
 
 ---
 
-## Feature Layout
+## How Other WPs Load the Data
 
-Features are 84-dimensional, split into two equal views for WP4 (Co-Training):
+```python
+from shared.data_utils import load_standard_split
 
-| Index | Group | Description |
-|-------|-------|-------------|
-| 0–41  | **View 1** (Time-domain / Morphological) | Per-lead mean & std (24), HRV stats (3), QRS range (1), ZCR (1), skewness, kurtosis (2), Hjorth parameters (3), padding |
-| 42–83 | **View 2** (Frequency-domain / Wavelet) | Per-lead Welch PSD band powers × 3 bands (36), spectral entropy, spectral roll-off (2), db4 wavelet sub-band energies (4) |
+split = load_standard_split(
+    "outputs/wp1/features.npz",
+    "outputs/wp1/labels.npz",
+)
 
----
+X_L, y_L       = split["X_train_L"], split["y_train_L"]   # Gold Set D_L
+X_U, y_U       = split["X_train_U"], split["y_train_U"]   # Untrusted Pool D_U
+X_val, y_val   = split["X_val"],     split["y_val"]
+X_test, y_test = split["X_test"],    split["y_test"]
+```
 
-## Gold Set vs Untrusted Pool
+**Class encoding:** 0=NORM, 1=MI, 2=STTC, 3=CD, 4=HYP
 
-After running WP1, the split is encoded in `labels.npz`:
-- `gold_mask[i] == True` → record i is in the Gold Set (D_L)
-- `gold_mask[i] == False` → record i is in the Untrusted Pool (D_U)
-- `fold[i]` → strat_fold value (1–10 from PTB-XL)
+**View slices for WP4 Co-Training:**
 
-The rule follows the proposal:
-- **Gold** (D_L): `validated_by_human == True`
-- **Untrusted** (D_U): `initial_autogenerated_report == True` OR not human-validated
-
----
-
-## Sensor Noise Analysis – What to Look For
-
-The analysis in `noise_analysis.py` answers Proposal §1.3 Question 1:
-
-> *How do physical sensor corruptions distort standard distance metrics, and how effectively do PCA and Mahalanobis scaling restore cluster quality?*
-
-Expected findings:
-- Raw + Euclidean: **lower purity on noisy records** (baseline drift inflates L2 distance).
-- Raw + Mahalanobis: partially compensates because it scales by feature covariance.
-- PCA + Euclidean: significantly better – PCA projects out the high-variance noise dimensions.
-- PCA + Mahalanobis: usually best – combines both corrections.
-
-If you see cluster purity below ~0.35 everywhere, check the feature scaling (StandardScaler must be applied before all distance computations).
+```python
+X_view1 = X[:, 0:42]   # Time-domain features
+X_view2 = X[:, 42:84]  # Frequency-domain features
+```
 
 ---
 
-## Extending WP1
+## Feature Layout (84 dimensions)
 
-Things you might add or tune:
-1. **R-peak detection**: replace the threshold-based `_rr_intervals()` with a proper Pan-Tompkins detector from the `neurokit2` or `biosppy` package for better HRV features.
-2. **Additional PCA components**: try `n_pca_components` from 10 to 40 and re-run noise analysis.
-3. **Hierarchical clustering**: `noise_analysis.py` currently uses k-Means. Try `AgglomerativeClustering` (already imported) and compare ARI.
+| Indices | View   | Contents                                     |
+| ------- | ------ | -------------------------------------------- |
+| 0–23    | View 1 | Per-lead mean & std amplitude (2 × 12 leads) |
+| 24–26   | View 1 | HRV: mean RR, std RR, RMSSD (from Lead II)   |
+| 27      | View 1 | QRS amplitude range                          |
+| 28      | View 1 | Zero-crossing rate (mean over leads)         |
+| 29–30   | View 1 | Signal skewness, kurtosis (mean over leads)  |
+| 31–33   | View 1 | Hjorth activity, mobility, complexity        |
+| 34–41   | View 1 | Padding zeros                                |
+| 42–77   | View 2 | Welch PSD band powers (3 bands × 12 leads)   |
+| 78      | View 2 | Spectral entropy (mean over leads)           |
+| 79      | View 2 | Spectral roll-off (mean over leads)          |
+| 80–83   | View 2 | db4 wavelet detail energies L1–L4 (Lead II)  |
 
 ---
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| `ModuleNotFoundError: wfdb` | `pip install wfdb` |
-| `ModuleNotFoundError: pywt` | `pip install PyWavelets` |
-| Memory error on full dataset | Use `--max_records 5000` for a representative subsample |
-| `PTBXL_PATH not set` | Pass `--data_path D:\ml-project\dataset` explicitly |
-| Feature NaN values | Check that at least one R-peak is detected in lead II; some very short records may need fallback |
+| Problem                      | Fix                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `ModuleNotFoundError: wfdb`  | `pip install wfdb`                                                                                       |
+| `ModuleNotFoundError: pywt`  | `pip install PyWavelets`                                                                                 |
+| Memory error on full dataset | Use `--max_records 5000`                                                                                 |
+| `PTBXL_PATH` not set         | Pass `--data_path D:\ml-project\dataset` explicitly                                                      |
+| NaN in features              | The extractor handles zero-std leads gracefully; run with `--skip_extraction` to reload the fixed output |

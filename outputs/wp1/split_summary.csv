@@ -1,0 +1,6 @@
+class,gold_train,untrusted_train,val,test
+NORM,5629,1625,916,913
+MI,937,1111,234,256
+STTC,1251,656,256,243
+CD,896,457,172,184
+HYP,297,119,64,56

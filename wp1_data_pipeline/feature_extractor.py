@@ -94,9 +94,11 @@ def _spectral_rolloff(freqs: np.ndarray, psd: np.ndarray,
 def _wavelet_energies(signal: np.ndarray,
                       wavelet: str = "db4", level: int = 4) -> np.ndarray:
     coeffs = pywt.wavedec(signal, wavelet, level=level)
-    # coeffs[0] = approx, coeffs[1..level] = detail levels
-    energies = np.array([np.sum(c ** 2) for c in coeffs[:level]])
-    return energies
+    # coeffs[0] = approximation coefficients (not used)
+    # coeffs[1..level] = detail coefficients at levels 1..level
+    # We use the 4 detail sub-bands as features.
+    energies = np.array([np.sum(c ** 2) for c in coeffs[1:level + 1]])
+    return energies  # shape (level,) = (4,)
 
 
 # ── Per-record feature function ────────────────────────────────────────────
@@ -156,8 +158,15 @@ def extract_features_one(record: np.ndarray, fs: int = FS) -> np.ndarray:
 
     # Skewness, kurtosis (mean over leads)
     from scipy.stats import skew as _skew, kurtosis as _kurt
-    feat_v1.append(float(np.mean([_skew(record[:, ch]) for ch in range(n_leads)])))
-    feat_v1.append(float(np.mean([_kurt(record[:, ch]) for ch in range(n_leads)])))
+
+    def _safe_skew(x):
+        return float(_skew(x)) if np.std(x) > 1e-10 else 0.0
+
+    def _safe_kurt(x):
+        return float(_kurt(x)) if np.std(x) > 1e-10 else 0.0
+
+    feat_v1.append(float(np.mean([_safe_skew(record[:, ch]) for ch in range(n_leads)])))
+    feat_v1.append(float(np.mean([_safe_kurt(record[:, ch]) for ch in range(n_leads)])))
 
     # Hjorth parameters (from lead II)
     act, mob, comp = _hjorth(record[:, 1])

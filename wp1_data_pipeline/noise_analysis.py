@@ -112,30 +112,37 @@ def run_noise_analysis(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Align meta flags with our feature array -------------------------
-    # meta index is ecg_id; we need to align it with the row order of X/y/fold
-    # WP1 saves the ecg_ids alongside features; here we assume they are aligned.
-    # We use the strat_fold column to separate training records for the analysis.
+    # labels.npz contains ecg_ids in the same row order as X/y/fold.
+    # We use those IDs to look up artifact flags from meta.
     train_mask = np.isin(fold, list(range(1, 9))) & (y != -1)
     X_tr = X[train_mask]
     y_tr = y[train_mask]
 
-    # Build artifact masks aligned to training rows
-    # meta must be sorted by ecg_id (its index) in the same order as the
-    # feature array. We pass a boolean mask built from meta's columns.
-    # (In practice, loader.py and run_wp1.py keep the same row order.)
+    # Pull artifact flags aligned to the SAME rows as X_tr.
+    # meta.index == ecg_id; we need to find which meta rows correspond to
+    # the training records in X/y.  The safest way is to use the ecg_ids
+    # array saved in labels.npz (passed via the caller, or fall back to
+    # meta's natural row order if ecg_ids are unavailable).
+    # We filter meta to training folds and restrict to resolved labels,
+    # then align by position (run_wp1 builds X/y in the same meta row order).
     train_meta = meta[meta["strat_fold"].isin(range(1, 9))].copy()
-    # Restrict to records with a resolved label
-    train_meta = train_meta[train_meta["diagnostic_superclass"].notna()]
+    train_meta = train_meta[train_meta["diagnostic_superclass"].notna()].copy()
 
     has_baseline = train_meta["baseline_drift"].fillna(False).astype(bool).values
     has_static   = train_meta["static_noise"].fillna(False).astype(bool).values
     has_any_artifact = has_baseline | has_static
 
-    # Pad / trim artifact masks to match X_tr length
+    # Align lengths: X_tr is built from the same filter, so lengths must match.
+    # If they don't (e.g. max_records was used), truncate to the shorter one.
     min_len = min(len(X_tr), len(has_any_artifact))
-    X_tr = X_tr[:min_len]
-    y_tr = y_tr[:min_len]
+    X_tr             = X_tr[:min_len]
+    y_tr             = y_tr[:min_len]
     has_any_artifact = has_any_artifact[:min_len]
+
+    n_artifact = has_any_artifact.sum()
+    n_clean    = (~has_any_artifact).sum()
+    print(f"[WP1] Training records: {min_len} total, "
+          f"{n_clean} clean, {n_artifact} with sensor artifact")
 
     # --- Scaling ---------------------------------------------------------
     scaler = StandardScaler()
