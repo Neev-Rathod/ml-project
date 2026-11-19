@@ -43,10 +43,10 @@ ml-project/
 │   ├── data_utils.py           ← Fold splitting, label assignment helpers
 │   └── metrics.py              ← Evaluation metrics (F1, AUC, confusion)
 │
-├── wp1_data_pipeline/          ← Shaurya: Data loader + sensor noise analysis
-├── wp2_synthetic_baselines/    ← Arnav: Synthetic generator + supervised baselines
-├── wp3_graph_propagation/      ← Neev: Graph label propagation
-├── wp4_cotraining_tsvm/        ← Pratyush: Co-training + Transductive SVM
+├── wp1_data_pipeline/          ← Neev: Data loader + sensor noise analysis
+├── wp2_synthetic_baselines/    ← Shaurya: Synthetic generator + supervised baselines
+├── wp3_graph_propagation/      ← Pratyush: Graph label propagation
+├── wp4_cotraining_tsvm/        ← Arnav: Co-training + Transductive SVM
 ├── wp5_latent_noise_em/        ← Tanuj: Latent-noise EM + evaluation suite
 │
 ├── outputs/                    ← Generated plots, CSVs, saved models (git-ignored)

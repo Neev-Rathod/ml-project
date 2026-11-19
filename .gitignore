@@ -5,6 +5,7 @@ dataset/
 # outputs/
 
 !outputs/wp1/
+!outputs/wp2/
 !outputs/wp4/
 # ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/

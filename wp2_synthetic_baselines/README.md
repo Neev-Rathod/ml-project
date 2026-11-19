@@ -1,5 +1,5 @@
 # WP2 – Synthetic Generator & Supervised Baselines
-**Person:** Arnav Gupta (2024A7PS0613G)
+**Person:** Shaurya Suman (2024A7PS0589G)
 
 ---
 

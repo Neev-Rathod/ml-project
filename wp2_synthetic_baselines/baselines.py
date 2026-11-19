@@ -18,11 +18,6 @@ Training modes (each class supports all three):
   gold_only    – fit on D_L only
   naive_pool   – fit on D_L ∪ D_U, treating noisy labels as clean
   self_training – iterative self-labelling from D_L
-
-TODO for Arnav (WP2)
----------------------
-1. Implement the fit() method in each class (follow the TODO comments).
-2. Implement run_breakdown_analysis() in run_wp2.py.
 """
 
 import numpy as np
@@ -33,6 +28,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.base import clone
 
 import sys
 from pathlib import Path
@@ -57,14 +53,41 @@ def self_training_fit(
     above `threshold` to the labeled pool.
     Returns the fitted classifier.
     """
-    # TODO: Implement.
-    # Steps:
-    #   1. Fit base_clf on (X_L, y_L).
-    #   2. Predict probabilities on X_U.
-    #   3. Identify rows where max(proba) > threshold.
-    #   4. Move those rows to the labeled pool with their predicted label.
-    #   5. Repeat until no new samples added or max_iter reached.
-    raise NotImplementedError("self_training_fit not yet implemented")
+    # Work with copies so we don't mutate the caller's arrays
+    X_labeled = X_L.copy()
+    y_labeled = y_L.copy()
+    X_unlabeled = X_U.copy()
+
+    clf = clone(base_clf)
+
+    for iteration in range(max_iter):
+        if len(X_unlabeled) == 0:
+            break
+
+        # 1. Fit on current labeled pool
+        clf.fit(X_labeled, y_labeled)
+
+        # 2. Predict probabilities on remaining unlabeled data
+        proba = clf.predict_proba(X_unlabeled)
+        max_proba = proba.max(axis=1)
+        pred_labels = proba.argmax(axis=1)
+
+        # 3. Identify rows where max probability > threshold
+        confident_mask = max_proba > threshold
+
+        if not np.any(confident_mask):
+            break
+
+        # 4. Move confident samples to the labeled pool
+        X_labeled = np.vstack([X_labeled, X_unlabeled[confident_mask]])
+        y_labeled = np.hstack([y_labeled, pred_labels[confident_mask]])
+
+        # Remove from unlabeled pool
+        X_unlabeled = X_unlabeled[~confident_mask]
+
+    # Final fit on the full labeled pool
+    clf.fit(X_labeled, y_labeled)
+    return clf
 
 
 # ── 1. Gaussian Naïve Bayes ────────────────────────────────────────────────
@@ -79,11 +102,14 @@ class GaussianNaiveBayes(BaseSSLModel):
         self._clf = GaussianNB()
 
     def fit(self, X_L, y_L, X_U, y_U_noisy=None):
-        # TODO: Implement the three modes using self._clf.
-        # gold_only    → fit on X_L, y_L
-        # naive_pool   → fit on vstack([X_L, X_U]), hstack([y_L, y_U_noisy])
-        # self_training → call self_training_fit(self._clf, ...)
-        raise NotImplementedError
+        if self.mode == "gold_only":
+            self._clf.fit(X_L, y_L)
+        elif self.mode == "naive_pool":
+            X_all = np.vstack([X_L, X_U])
+            y_all = np.hstack([y_L, y_U_noisy])
+            self._clf.fit(X_all, y_all)
+        elif self.mode == "self_training":
+            self._clf = self_training_fit(self._clf, X_L, y_L, X_U)
         self._is_fitted = True
         return self
 
@@ -104,13 +130,18 @@ class LogisticRegressionModel(BaseSSLModel):
         self._clf = Pipeline([
             ("scaler", StandardScaler()),
             ("lr", LogisticRegression(C=C, max_iter=1000,
-                                      multi_class="multinomial",
                                       solver="lbfgs")),
         ])
 
     def fit(self, X_L, y_L, X_U, y_U_noisy=None):
-        # TODO: Same three-mode pattern as GaussianNaiveBayes.
-        raise NotImplementedError
+        if self.mode == "gold_only":
+            self._clf.fit(X_L, y_L)
+        elif self.mode == "naive_pool":
+            X_all = np.vstack([X_L, X_U])
+            y_all = np.hstack([y_L, y_U_noisy])
+            self._clf.fit(X_all, y_all)
+        elif self.mode == "self_training":
+            self._clf = self_training_fit(self._clf, X_L, y_L, X_U)
         self._is_fitted = True
         return self
 
@@ -134,8 +165,14 @@ class KNNClassifierModel(BaseSSLModel):
         ])
 
     def fit(self, X_L, y_L, X_U, y_U_noisy=None):
-        # TODO
-        raise NotImplementedError
+        if self.mode == "gold_only":
+            self._clf.fit(X_L, y_L)
+        elif self.mode == "naive_pool":
+            X_all = np.vstack([X_L, X_U])
+            y_all = np.hstack([y_L, y_U_noisy])
+            self._clf.fit(X_all, y_all)
+        elif self.mode == "self_training":
+            self._clf = self_training_fit(self._clf, X_L, y_L, X_U)
         self._is_fitted = True
         return self
 
@@ -154,12 +191,25 @@ class DecisionTreeModel(BaseSSLModel):
                  max_depth: int | None = None):
         super().__init__(name=f"DT(depth={max_depth})-{mode}")
         self.mode = mode
+        self.max_depth_param = max_depth
         self._clf = DecisionTreeClassifier(max_depth=max_depth,
                                            random_state=42)
+        # Attributes for analysis
+        self.tree_depth_ = None
+        self.n_leaves_ = None
 
     def fit(self, X_L, y_L, X_U, y_U_noisy=None):
-        # TODO: Also record tree depth and n_leaves for the analysis.
-        raise NotImplementedError
+        if self.mode == "gold_only":
+            self._clf.fit(X_L, y_L)
+        elif self.mode == "naive_pool":
+            X_all = np.vstack([X_L, X_U])
+            y_all = np.hstack([y_L, y_U_noisy])
+            self._clf.fit(X_all, y_all)
+        elif self.mode == "self_training":
+            self._clf = self_training_fit(self._clf, X_L, y_L, X_U)
+        # Record tree depth and n_leaves for analysis
+        self.tree_depth_ = self._clf.get_depth()
+        self.n_leaves_ = self._clf.get_n_leaves()
         self._is_fitted = True
         return self
 
@@ -182,11 +232,28 @@ class SVMModel(BaseSSLModel):
             ("scaler", StandardScaler()),
             ("svm", SVC(C=C, kernel="rbf", probability=True)),
         ])
+        # Attribute for analysis
+        self.n_support_vectors_ = None
 
     def fit(self, X_L, y_L, X_U, y_U_noisy=None):
-        # TODO: Same three-mode pattern.
-        # TIP: self-training with SVC is slow; limit max_iter to 5–10.
-        raise NotImplementedError
+        if self.mode == "gold_only":
+            self._clf.fit(X_L, y_L)
+        elif self.mode == "naive_pool":
+            X_all = np.vstack([X_L, X_U])
+            y_all = np.hstack([y_L, y_U_noisy])
+            self._clf.fit(X_all, y_all)
+        elif self.mode == "self_training":
+            # SVM is slow for self-training; limit iterations
+            self._clf = self_training_fit(
+                self._clf, X_L, y_L, X_U,
+                threshold=0.95, max_iter=5,
+            )
+        # Record support vector count for analysis
+        svm_step = self._clf.named_steps.get("svm", self._clf)
+        if hasattr(svm_step, "n_support_"):
+            self.n_support_vectors_ = int(svm_step.n_support_.sum())
+        else:
+            self.n_support_vectors_ = None
         self._is_fitted = True
         return self
 
